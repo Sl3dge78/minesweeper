@@ -4,6 +4,7 @@ pub struct Buffer {
     handle: GLuint,
 }
 
+#[allow(dead_code)]
 impl Buffer {
     pub fn new() -> Buffer {
         let mut buf: GLuint = 0;

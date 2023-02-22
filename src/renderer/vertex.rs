@@ -1,5 +1,5 @@
 
-use crate::math::{Vec3, Vec2};
+use crate::math::{Vec4, Vec3, Vec2};
 use cgmath::{Vector3, Zero};
 
 use gl::types::*;
@@ -10,7 +10,7 @@ pub struct Vertex {
     pub pos: Vec3,
     pub normal: Vec3,
     pub uv: Vec2,
-    pub color: Vec3,
+    pub color: Vec4,
 }
 
 impl Default for Vertex {
@@ -19,7 +19,7 @@ impl Default for Vertex {
             pos: Vector3::zero(),
             normal: Vector3::zero(),
             uv: Vec2::zero(),
-            color: Vec3::zero(),
+            color: Vec4::zero(),
         }
     }
 }

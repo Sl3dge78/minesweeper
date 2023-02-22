@@ -1,11 +1,12 @@
 use sdl2::event::Event;
 
-pub mod player;
 pub mod renderer;
-pub mod room;
 use renderer::Renderer;
 
 pub mod math;
+
+pub mod input;
+pub use input::*;
 
 mod game;
 use game::*;
@@ -48,12 +49,8 @@ fn main() {
 
         let input = Input::from_pump(&event_pump);
 
-
         game_state.update(&input);
-
-        renderer.begin_draw();
         game_state.draw(&mut renderer);
-        renderer.end_draw();
         renderer.swap(&window);
     }
 }

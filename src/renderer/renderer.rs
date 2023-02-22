@@ -5,13 +5,14 @@ pub struct Renderer {
     immediate_vertices: Vec<Vertex>,
     vbo: Buffer,
     vao: VertexArray,
-    pub projection: Mat4,
-    pub view: Mat4,
+    // pub projection: Mat4,
+    // pub view: Mat4,
     shader: Shader,
     screen_space_shader: Shader,
-    w: u32,
-    h: u32,
-    scale: u32,
+    width: u32,
+    height: u32,
+
+    default_texture: Texture,
 }
 
 impl Renderer {
@@ -31,42 +32,48 @@ impl Renderer {
             return Err(UnableToCreateContext);
         };
         gl::load_with(|s| video.gl_get_proc_address(s) as *const std::os::raw::c_void);
-        let (w, h) = window.size();
+        let (width, height) = window.size();
 
-        let scale = 5;
+        let default_texture = Texture::new();
+        default_texture.bind();
+        let data = [255u8; 4];
+        unsafe {
+            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, 1, 1, 0, gl::RGBA, gl::UNSIGNED_BYTE, data.as_ptr() as *const GLvoid);
+        }
 
-        Ok(Renderer {
+        let result = Renderer {
             _gl_context: gl_context,
             immediate_vertices: Vec::<Vertex>::new(),
             vbo: Buffer::new(),
             vao: VertexArray::new(),
-            projection: cgmath::perspective(
-                cgmath::Deg(60.0),
-                (w as f32) / (h as f32),
-                0.1,
-                1000.0,
-            ),
             shader: Shader::from_source(
                 include_str!("../triangle.vert"),
                 include_str!("../triangle.frag"),
             )
             .unwrap(),
-            view: Mat4::identity(),
             screen_space_shader: Shader::from_source(
                 include_str!("../screen_space.vert"),
                 include_str!("../screen_space.frag"),
             )
             .unwrap(),
-            w,
-            h,
-            scale,
-        })
+            width,
+            height,
+            default_texture
+        };
+        result.render_to_window();
+        Ok(result)
     }
 
     #[inline]
     pub fn enable(what: GLenum) {
         unsafe {
             gl::Enable(what);
+        }
+    }
+
+    pub fn disable(what: GLenum) {
+        unsafe {
+            gl::Disable(what);
         }
     }
 
@@ -79,13 +86,29 @@ impl Renderer {
     }
 
     pub fn update_window(&mut self, window: &Window) {
-        (self.w, self.h) = window.size();
-        self.projection = cgmath::perspective(
+        (self.width, self.height) = window.size();
+    }
+
+    pub fn render_to_window (&self) {
+        unsafe {
+            gl::Viewport(0, 0, self.width as i32, self.height as i32);
+        }
+        self.set_projection_matrix(self.width, self.height);
+    }
+
+    pub fn set_projection_matrix(&self, width: u32, height: u32) {
+        self.screen_space_shader.set_uniform("Projection", cgmath::ortho(0.0, width as f32, height as f32, 0.0, -1.0, 1.0)).unwrap();
+        self.shader.set_uniform("Projection", cgmath::perspective(
             cgmath::Deg(60.0),
-            (self.w as f32) / (self.h as f32),
+            (width as f32) / (height as f32),
             0.1,
             1000.0,
-        );
+        )).unwrap();
+
+    }
+
+    pub fn default_texture(&self) {
+        self.default_texture.bind();
     }
 
     #[inline]
@@ -93,195 +116,71 @@ impl Renderer {
         self.immediate_vertices.push(vertex);
     }
 
-    pub fn push_quad_corners(
-        &mut self,
-        p0: Point3,
-        p1: Point3,
-        p2: Point3,
-        p3: Point3,
-        normal: Vec3,
-        color: Vec3,
-    ) {
-        self.push_vertex(Vertex {
-            pos: p0.vec3(),
-            normal,
-            uv: Vec2::new(0.0, 0.0),
-            color,
-        });
-        self.push_vertex(Vertex {
-            pos: p1.vec3(),
-            normal,
-            uv: Vec2::new(1.0, 0.0),
-            color,
-        });
-        self.push_vertex(Vertex {
-            pos: p2.vec3(),
-            normal,
-            uv: Vec2::new(1.0, 1.0),
-            color,
-        });
-        self.push_vertex(Vertex {
-            pos: p0.vec3(),
-            normal,
-            uv: Vec2::new(0.0, 0.0),
-            color,
-        });
-        self.push_vertex(Vertex {
-            pos: p2.vec3(),
-            normal,
-            uv: Vec2::new(1.0, 1.0),
-            color,
-        });
-        self.push_vertex(Vertex {
-            pos: p3.vec3(),
-            normal,
-            uv: Vec2::new(0.0, 1.0),
-            color,
-        });
+    pub fn push_2d_quad(&mut self, x: f32, y: f32, w: f32, h: f32, color: Vec4) {
+        let normal = Vec3::new(0.0, 0.0, 1.0);
+        self.push_vertex(Vertex { pos: Vec3::new(x, y, 0.0), normal, uv: Vec2::new(0.0, 0.0), color });
+        self.push_vertex(Vertex { pos: Vec3::new(x + w, y, 0.0), normal, uv: Vec2::new(1.0, 0.0), color, });
+        self.push_vertex(Vertex { pos: Vec3::new(x + w, y + h, 0.0), normal, uv: Vec2::new(1.0, 1.0), color, });
+        self.push_vertex(Vertex { pos: Vec3::new(x, y, 0.0), normal, uv: Vec2::new(0.0, 0.0), color, });
+        self.push_vertex(Vertex { pos: Vec3::new(x + w, y + h, 0.0), normal, uv: Vec2::new(1.0, 1.0), color, });
+        self.push_vertex(Vertex { pos: Vec3::new(x, y + h, 0.0), normal, uv: Vec2::new(0.0, 1.0), color, });
     }
 
-    pub fn push_cube(&mut self, color: Vec3) {
+    pub fn push_quad_corners( &mut self, p0: Point3, p1: Point3, p2: Point3, p3: Point3, normal: Vec3, color: Vec4,) {
+        self.push_vertex(Vertex { pos: p0.vec3(), normal, uv: Vec2::new(0.0, 0.0), color, });
+        self.push_vertex(Vertex { pos: p1.vec3(), normal, uv: Vec2::new(1.0, 0.0), color, });
+        self.push_vertex(Vertex { pos: p2.vec3(), normal, uv: Vec2::new(1.0, 1.0), color, });
+        self.push_vertex(Vertex { pos: p0.vec3(), normal, uv: Vec2::new(0.0, 0.0), color, });
+        self.push_vertex(Vertex { pos: p2.vec3(), normal, uv: Vec2::new(1.0, 1.0), color, });
+        self.push_vertex(Vertex { pos: p3.vec3(), normal, uv: Vec2::new(0.0, 1.0), color, });
+    }
+
+    pub fn push_cube(&mut self, color: Vec4) {
         self.push_quad_corners(
-            Point3 {
-                x: -0.5,
-                y: -0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: -0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: -0.5,
-                z: 0.5,
-            },
-            Point3 {
-                x: -0.5,
-                y: -0.5,
-                z: 0.5,
-            },
+            Point3 { x: -0.5, y: -0.5, z: -0.5, },
+            Point3 { x: 0.5, y: -0.5, z: -0.5, },
+            Point3 { x: 0.5, y: -0.5, z: 0.5, },
+            Point3 { x: -0.5, y: -0.5, z: 0.5, },
             UP,
             color,
         ); // -Y
         self.push_quad_corners(
-            Point3 {
-                x: -0.5,
-                y: 0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: 0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: 0.5,
-                z: 0.5,
-            },
-            Point3 {
-                x: -0.5,
-                y: 0.5,
-                z: 0.5,
-            },
+            Point3 { x: -0.5, y: 0.5, z: -0.5, },
+            Point3 { x: 0.5, y: 0.5, z: -0.5, },
+            Point3 { x: 0.5, y: 0.5, z: 0.5, },
+            Point3 { x: -0.5, y: 0.5, z: 0.5, },
             DOWN,
             color,
         ); // +Y
         self.push_quad_corners(
-            Point3 {
-                x: -0.5,
-                y: -0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: -0.5,
-                y: 0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: -0.5,
-                y: 0.5,
-                z: 0.5,
-            },
-            Point3 {
-                x: -0.5,
-                y: -0.5,
-                z: 0.5,
-            },
+            Point3 { x: -0.5, y: -0.5, z: -0.5, },
+            Point3 { x: -0.5, y: 0.5, z: -0.5, },
+            Point3 { x: -0.5, y: 0.5, z: 0.5, },
+            Point3 { x: -0.5, y: -0.5, z: 0.5, },
             LEFT,
             color,
         ); // -X
         self.push_quad_corners(
-            Point3 {
-                x: 0.5,
-                y: -0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: 0.5,
-                z: -0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: 0.5,
-                z: 0.5,
-            },
-            Point3 {
-                x: 0.5,
-                y: -0.5,
-                z: 0.5,
-            },
+            Point3 { x: 0.5, y: -0.5, z: -0.5, },
+            Point3 { x: 0.5, y: 0.5, z: -0.5, },
+            Point3 { x: 0.5, y: 0.5, z: 0.5, },
+            Point3 { x: 0.5, y: -0.5, z: 0.5, },
             RIGHT,
             color,
         ); // +X
         self.push_quad_corners(
-            Point3 {
-                z: -0.5,
-                y: -0.5,
-                x: -0.5,
-            },
-            Point3 {
-                z: -0.5,
-                y: 0.5,
-                x: -0.5,
-            },
-            Point3 {
-                z: -0.5,
-                y: 0.5,
-                x: 0.5,
-            },
-            Point3 {
-                z: -0.5,
-                y: -0.5,
-                x: 0.5,
-            },
+            Point3 { z: -0.5, y: -0.5, x: -0.5, },
+            Point3 { z: -0.5, y: 0.5, x: -0.5, },
+            Point3 { z: -0.5, y: 0.5, x: 0.5, },
+            Point3 { z: -0.5, y: -0.5, x: 0.5, },
             BACK,
             color,
         ); // -Z
         self.push_quad_corners(
-            Point3 {
-                z: 0.5,
-                y: -0.5,
-                x: -0.5,
-            },
-            Point3 {
-                z: 0.5,
-                y: 0.5,
-                x: -0.5,
-            },
-            Point3 {
-                z: 0.5,
-                y: 0.5,
-                x: 0.5,
-            },
-            Point3 {
-                z: 0.5,
-                y: -0.5,
-                x: 0.5,
-            },
+            Point3 { z: 0.5, y: -0.5, x: -0.5, },
+            Point3 { z: 0.5, y: 0.5, x: -0.5, },
+            Point3 { z: 0.5, y: 0.5, x: 0.5, },
+            Point3 { z: 0.5, y: -0.5, x: 0.5, },
             FORWARD,
             color,
         ); // +Z
@@ -311,7 +210,7 @@ impl Renderer {
             (px + py + z).point3(),
             (mx + py + z).point3(),
             axis,
-            Vec3::new(1.0, 1.0, 1.0),
+            Vec4::new(1.0, 1.0, 1.0, 1.0),
         );
     }
 
@@ -341,50 +240,27 @@ impl Renderer {
         self.immediate_vertices.clear();
     }
 
-    pub fn begin_draw(&mut self) {
+    pub fn begin_3d(&mut self, view: Mat4) {
         Renderer::clear(cgmath::Vector4 {
             x: 0.1,
             y: 0.0,
             z: 0.1,
             w: 1.0,
         });
-        self.fbo.bind();
         self.shader.set_used();
-        self.shader
-            .set_uniform("Projection", self.projection)
-            .unwrap();
-        self.shader.set_uniform("View", self.view).unwrap();
+        self.shader.set_uniform("View", view).unwrap();
 
         Renderer::enable(gl::DEPTH_TEST);
-        unsafe {
-            gl::Viewport(
-                0,
-                0,
-                (self.w / self.scale) as i32,
-                (self.h / self.scale) as i32,
-            );
-        }
     }
 
-    pub fn end_draw(&mut self) {
+    pub fn begin_2d(&mut self) {
         self.flush();
-        FrameBuffer::unbind();
-        unsafe {
-            gl::ClearColor(1.0, 1.0, 1.0, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-            gl::Viewport(0, 0, self.w as i32, self.h as i32);
-        }
         self.screen_space_shader.set_used();
-        unsafe { gl::BindTexture(gl::TEXTURE_2D, self.fbo.texture) }
-        self.push_quad_corners(
-            Point3::new(-1.0, -1.0, 0.0),
-            Point3::new(1.0, -1.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-            Point3::new(-1.0, 1.0, 0.0),
-            FORWARD,
-            Vec3::new(1.0, 1.0, 1.0),
-        );
-        self.flush();
+        Renderer::disable(gl::DEPTH_TEST);
+        Renderer::enable(gl::BLEND);
+        unsafe {
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        }
     }
 
     pub fn swap(&mut self, window: &Window) {
