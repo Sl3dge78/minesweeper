@@ -21,7 +21,7 @@ fn main() {
         .video()
         .expect("SDL: Failed to init Video subsystem");
     let window = video
-        .window("Demo", 1280, 720)
+        .window("Minesweeper", 1280, 720)
         .position_centered()
         .opengl()
         .build()
@@ -29,13 +29,13 @@ fn main() {
     let mut renderer = Renderer::new(&window, &video).unwrap();
 
     // Init input
-    sdl_context.mouse().set_relative_mouse_mode(true);
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     // Init game
     let mut game_state: GameState = Default::default();
 
     let mut previous_frame = std::time::Instant::now();
+
     'running: loop {
         game_state.delta_time = previous_frame.elapsed().as_secs_f32();
         previous_frame = std::time::Instant::now();
@@ -43,7 +43,9 @@ fn main() {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => break 'running,
-                _ => {}
+                _ => { 
+                    game_state.event(event)
+                }
             }
         }
 
