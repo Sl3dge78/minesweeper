@@ -13,6 +13,8 @@ use game::*;
 
 mod collision;
 
+mod sprite_sheet;
+
 fn main() {
     let sdl_context = sdl2::init().expect("SDL: Failed to init SDL");
 

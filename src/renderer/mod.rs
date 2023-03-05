@@ -29,4 +29,4 @@ mod error;
 use error::Error::{self, *};
 
 mod texture;
-use texture::*;
+pub use texture::*;

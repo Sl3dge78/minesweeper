@@ -5,8 +5,6 @@ pub struct Renderer {
     immediate_vertices: Vec<Vertex>,
     vbo: Buffer,
     vao: VertexArray,
-    // pub projection: Mat4,
-    // pub view: Mat4,
     shader: Shader,
     screen_space_shader: Shader,
     width: u32,
@@ -34,12 +32,9 @@ impl Renderer {
         gl::load_with(|s| video.gl_get_proc_address(s) as *const std::os::raw::c_void);
         let (width, height) = window.size();
 
-        let default_texture = Texture::new();
-        default_texture.bind();
+        let mut default_texture = Texture::new();
         let data = [255u8; 4];
-        unsafe {
-            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, 1, 1, 0, gl::RGBA, gl::UNSIGNED_BYTE, data.as_ptr() as *const GLvoid);
-        }
+        default_texture.set_data(1, 1, gl::RGBA, &data);
 
         let result = Renderer {
             _gl_context: gl_context,
@@ -124,6 +119,17 @@ impl Renderer {
         self.push_vertex(Vertex { pos: Vec3::new(x, y, 0.0), normal, uv: Vec2::new(0.0, 0.0), color, });
         self.push_vertex(Vertex { pos: Vec3::new(x + w, y + h, 0.0), normal, uv: Vec2::new(1.0, 1.0), color, });
         self.push_vertex(Vertex { pos: Vec3::new(x, y + h, 0.0), normal, uv: Vec2::new(0.0, 1.0), color, });
+    }
+
+    pub fn push_2d_sprite(&mut self, p0: Vec2, p1: Vec2, uv0: Vec2, uv1: Vec2) {
+        let normal = Vec3::new(0.0, 0.0, 1.0);
+        let color = Vector4 { x: 1.0, y: 1.0, z: 1.0, w: 1.0 };
+        self.push_vertex(Vertex { pos: Vec3::new(p0.x, p0.y, 0.0), normal, uv: uv0, color});
+        self.push_vertex(Vertex { pos: Vec3::new(p1.x, p0.y, 0.0), normal, uv: Vec2::new(uv1.x, uv0.y), color});
+        self.push_vertex(Vertex { pos: Vec3::new(p1.x, p1.y, 0.0), normal, uv: uv1, color});
+        self.push_vertex(Vertex { pos: Vec3::new(p0.x, p0.y, 0.0), normal, uv: uv0, color});
+        self.push_vertex(Vertex { pos: Vec3::new(p1.x, p1.y, 0.0), normal, uv: uv1, color});
+        self.push_vertex(Vertex { pos: Vec3::new(p0.x, p1.y, 0.0), normal, uv: Vec2::new(uv0.x, uv1.y), color});
     }
 
     pub fn push_quad_corners( &mut self, p0: Point3, p1: Point3, p2: Point3, p3: Point3, normal: Vec3, color: Vec4,) {
