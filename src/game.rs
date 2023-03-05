@@ -69,7 +69,7 @@ impl GameState {
     pub fn draw(&self, renderer: &mut Renderer) {
         renderer.begin_2d();
         renderer.default_texture();
-        self.sprites.bind();
+        
         self.grid.draw(renderer, &self.sprites);
     }
 
@@ -192,6 +192,7 @@ impl Grid {
     }
 
     pub fn draw(&self, renderer: &mut Renderer, texture: &Texture) {
+        texture.bind();
         for i in 0..self.elems.len() {
             let x = i as u32 % self.size;
             let y = i as u32 / self.size;
