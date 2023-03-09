@@ -20,19 +20,26 @@ const SPRITE_FLAG: (i32, i32) = (1, 2);
 const SPRITE_MINE: (i32, i32) = (2, 2);
 const SPRITE_0: (i32, i32) = (3, 2);
 
-const NB_MINES: u32 = 20;
+const DENSITY: f32 = 0.1;
 
 impl Default for GameState {
     fn default() -> Self {
         GameState {
             delta_time : 0.0,
-            grid: Grid::generate(16, NB_MINES),
+            grid: Grid::generate(16, 16, DENSITY),
             state: State::Playing,
         }
     }
 }
 
 impl GameState {
+    pub fn new(window_dims: (u32, u32)) -> GameState {
+        GameState {
+            grid: Grid::generate(window_dims.0 / 16, window_dims.1 / 16, DENSITY),
+            ..Default::default()
+        }
+    }
+
     pub fn event(&mut self, event: Event) {
         match event {
             Event::MouseButtonDown { mouse_btn, x, y, .. } => {
@@ -48,7 +55,7 @@ impl GameState {
                 if let Some(scancode) = scancode {
                     match scancode {
                         Scancode::R => { 
-                            self.grid = Grid::generate(16, NB_MINES);
+                            self.grid = Grid::generate(1280 / 16, 720 / 16, DENSITY);
                             self.state = State::Playing;
                         },
                         _ => {},
@@ -68,7 +75,7 @@ impl GameState {
         renderer.begin_2d();
         renderer.default_texture();
         
-        self.grid.draw(renderer, resources.get_texture());
+        self.grid.draw(renderer, resources.get("./res/sprites.png").as_texture());
     }
 
     pub fn on_left_click(&mut self, x: i32, y: i32) {
@@ -127,23 +134,26 @@ const CELL_SIZE: u32 = 16;
 struct Grid {
     elems : Vec<Cell>,
     cell_offset: Vec2,
-    size: u32,
+    width: u32,
+    height: u32,
 }
 
 impl Grid {
-    pub fn generate(size: u32, nb_mines: u32) -> Grid {
+    pub fn generate(width: u32, height: u32, density: f32) -> Grid {
         let mut result = Grid {
             elems: Vec::new(),
             cell_offset: Vector2::new(0.0, 0.0),
-            size
+            width,
+            height
         };
-        result.elems.resize((size * size) as usize, Default::default());
+        result.elems.resize((width * height) as usize, Default::default());
+        let nb_mines: u32 = (density * (width * height) as f32) as u32;
 
         for _ in 0..nb_mines {
             loop {
-                let x = rand::random::<u32>() % size;
-                let y = rand::random::<u32>() % size;
-                let index: usize = (x + y * size) as usize;
+                let x = rand::random::<u32>() % width;
+                let y = rand::random::<u32>() % height;
+                let index: usize = (x + y * width) as usize;
                 match result.elems[index].contents {
                     CellContents::Mine => continue,
                     _ => { 
@@ -157,31 +167,31 @@ impl Grid {
     }
 
     fn get_cell(&self, pos: (u32, u32)) -> &Cell {
-        let idx = Grid::get_index(self.size, pos.0, pos.1);
+        let idx = Grid::get_index(self.width, pos.0, pos.1);
         return &self.elems[idx];
     }
 
     fn get_cell_mut(&mut self, pos:(u32, u32)) -> &mut Cell {
-        let idx = Grid::get_index(self.size, pos.0, pos.1);
+        let idx = Grid::get_index(self.width, pos.0, pos.1);
         return &mut self.elems[idx];
     }
 
-    fn get_index(size: u32, x: u32, y: u32) -> usize {
-        (x + y * size) as usize
+    fn get_index(width: u32, x: u32, y: u32) -> usize {
+        (x + y * width) as usize
     }
 
     fn place_mine(&mut self, x: u32, y: u32) {
-        let idx = Grid::get_index(self.size, x, y);
+        let idx = Grid::get_index(self.width, x, y);
         self.elems[idx].contents = CellContents::Mine;
         let start_x = if x == 0 { 0 } else { x - 1 };
-        let end_x = if x == self.size - 1 { self.size - 1 } else { x + 1 };
+        let end_x = if x == self.width - 1 { self.width - 1 } else { x + 1 };
 
         let start_y = if y == 0 { 0 } else { y - 1};
-        let end_y = if y == self.size - 1 { self.size - 1 } else { y + 1};
+        let end_y = if y == self.height - 1 { self.height - 1 } else { y + 1};
         for x2 in start_x..=end_x {
             for y2 in start_y..=end_y {
                 if x2 == x && y2 == y { continue; }
-                let idx = Grid::get_index(self.size, x2, y2);
+                let idx = Grid::get_index(self.width, x2, y2);
                 if let CellContents::Empty(ref mut nb) = self.elems[idx].contents {
                     *nb += 1;
                 }
@@ -192,8 +202,8 @@ impl Grid {
     pub fn draw(&self, renderer: &mut Renderer, texture: &Texture) {
         texture.bind();
         for i in 0..self.elems.len() {
-            let x = i as u32 % self.size;
-            let y = i as u32 / self.size;
+            let x = i as u32 % self.width;
+            let y = i as u32 / self.width;
             let p0 = Vec2::new(self.cell_offset.x + (x * CELL_SIZE) as f32, self.cell_offset.y + (y * CELL_SIZE) as f32);
             let p1 = p0 + Vec2::new(CELL_SIZE as f32, CELL_SIZE as f32);
 
@@ -253,7 +263,7 @@ impl Grid {
                 self.reveal(pos);
             }
         }
-        if pos.0 + 1 != self.size {
+        if pos.0 + 1 != self.width {
             let pos = (pos.0+1, pos.1);
             if check_cell(self.get_cell(pos)) {
                 self.reveal(pos);
@@ -265,7 +275,7 @@ impl Grid {
                 self.reveal(pos);
             }
         }
-        if pos.1 + 1 != self.size {
+        if pos.1 + 1 != self.height {
             let pos = (pos.0, pos.1+1);
             if check_cell(self.get_cell(pos)) {
                 self.reveal(pos);
@@ -276,7 +286,7 @@ impl Grid {
     }
 
     pub fn flag(&mut self, x: u32, y: u32) {
-        let idx = Grid::get_index(self.size, x, y);
+        let idx = Grid::get_index(self.width, x, y);
         self.elems[idx].flag = !self.elems[idx].flag;
     }
 

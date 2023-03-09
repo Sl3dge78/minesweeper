@@ -35,16 +35,17 @@ fn main() {
 
     // Init input
     let mut event_pump = sdl_context.event_pump().unwrap();
-    let resources = Resources::new();
+    let mut resources = Resources::new();
 
     // Init game
-    let mut game_state: GameState = Default::default();
+    let mut game_state= GameState::new((1280, 720));
 
     let mut previous_frame = std::time::Instant::now();
 
     'running: loop {
         game_state.delta_time = previous_frame.elapsed().as_secs_f32();
         previous_frame = std::time::Instant::now();
+        resources.check_for_changes();
 
         for event in event_pump.poll_iter() {
             match event {

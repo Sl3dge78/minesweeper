@@ -1,6 +1,7 @@
 use gl::types::*;
 use std::fs::File;
 use png::{Decoder, Reader};
+use crate::resources::{ResourceLoader, ResourceKind};
 
 pub struct Texture {
     handle: GLuint,
@@ -95,5 +96,12 @@ impl Drop for Texture {
         unsafe {
             gl::DeleteTextures(1, &self.handle);
         }
+    }
+}
+
+impl ResourceLoader for Texture {
+    const EXT : &'static str = "png";
+    fn load_resource(path: &str) -> Option<ResourceKind> {
+        Some(ResourceKind::Texture(Texture::from_image(path)?))
     }
 }
