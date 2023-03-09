@@ -1,7 +1,7 @@
 
 use sdl2::{event::Event, keyboard::Scancode};
 
-use crate::{math::*, renderer::*, input::*, sprite_sheet::SpriteSheet};
+use crate::{math::*, renderer::*, input::*, sprite_sheet::SpriteSheet, resources::*};
 
 enum State {
     Playing,
@@ -12,7 +12,6 @@ enum State {
 pub struct GameState {
     pub delta_time: f32,
     grid: Grid,
-    sprites: Texture,
     state: State,
 }
 
@@ -28,7 +27,6 @@ impl Default for GameState {
         GameState {
             delta_time : 0.0,
             grid: Grid::generate(16, NB_MINES),
-            sprites: Texture::from_image("res/sprites.png").expect("Unable to load sprites."),
             state: State::Playing,
         }
     }
@@ -66,11 +64,11 @@ impl GameState {
 
     }
 
-    pub fn draw(&self, renderer: &mut Renderer) {
+    pub fn draw(&self, renderer: &mut Renderer, resources: &Resources) {
         renderer.begin_2d();
         renderer.default_texture();
         
-        self.grid.draw(renderer, &self.sprites);
+        self.grid.draw(renderer, resources.get_texture());
     }
 
     pub fn on_left_click(&mut self, x: i32, y: i32) {

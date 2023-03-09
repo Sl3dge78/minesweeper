@@ -15,6 +15,9 @@ mod collision;
 
 mod sprite_sheet;
 
+mod resources;
+use resources::*;
+
 fn main() {
     let sdl_context = sdl2::init().expect("SDL: Failed to init SDL");
 
@@ -32,6 +35,7 @@ fn main() {
 
     // Init input
     let mut event_pump = sdl_context.event_pump().unwrap();
+    let resources = Resources::new();
 
     // Init game
     let mut game_state: GameState = Default::default();
@@ -54,7 +58,7 @@ fn main() {
         let input = Input::from_pump(&event_pump);
 
         game_state.update(&input);
-        game_state.draw(&mut renderer);
+        game_state.draw(&mut renderer, &resources);
         renderer.swap(&window);
     }
 }
