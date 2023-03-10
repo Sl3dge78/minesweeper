@@ -12,7 +12,22 @@ pub struct GameState {
     pub delta_time: f32,
     grid: Grid,
     state: State,
-    camera_position: Vec2i,
+    camera: Camera,
+}
+
+struct Camera {
+    position: Vec2i,
+    zoom: i32,
+}
+
+impl Camera {
+    pub fn cell_size (&self) -> f32 {
+        self.zoom as f32
+    }
+
+    pub fn screen_to_world(&self, pos: Vec2) -> Vec2i {
+        return ((self.position.vec2() + pos) / self.cell_size()).vec2i();
+    }
 }
 
 const SPRITE_HIDDEN: (i32, i32) = (0, 2);
@@ -28,7 +43,7 @@ impl Default for GameState {
             delta_time : 0.0,
             grid: Grid::new(),
             state: State::Playing,
-            camera_position: Vec2i::new(0, 0),
+            camera: Camera { position: Vec2i::new(0, 0), zoom: CELL_SIZE },
         }
     }
 }
@@ -52,6 +67,13 @@ impl GameState {
                     }
                 }
             },
+            Event::MouseWheel { y, .. } => {
+                if let State::Playing = self.state {
+                    self.camera.zoom += y;
+                    if self.camera.zoom < 4 { self.camera.zoom = 4; }
+                    if self.camera.zoom > 32 { self.camera.zoom = 32; }
+                }
+            }
             Event::KeyDown { scancode, .. } => {
                 if let Some(scancode) = scancode {
                     match scancode {
@@ -73,7 +95,7 @@ impl GameState {
 
     pub fn update(&mut self, input: &Input) {
         if input.mouse.is_mouse_button_pressed(MouseButton::Middle) {
-            self.camera_position += Vec2i::new(- input.rel_mouse.x(), - input.rel_mouse.y());
+            self.camera.position += Vec2i::new(- input.rel_mouse.x(), - input.rel_mouse.y());
         }
 
     }
@@ -83,23 +105,20 @@ impl GameState {
         renderer.begin_2d();
         renderer.default_texture();
         
-        self.grid.draw(renderer, resources.get("./res/sprites.png").as_texture(), self.camera_position);
+        self.grid.draw(renderer, resources.get("./res/sprites.png").as_texture(), &self.camera);
     }
 
-    pub fn screen_to_world(&self, pos: Vec2) -> Vec2 {
-        return self.camera_position.vec2() + pos;
-    }
 
     pub fn on_left_click(&mut self, x: i32, y: i32) {
-        let pos = self.screen_to_world(Vec2::new(x as f32, y as f32));
-        if self.grid.reveal(pos.vec2i()) {
+        let pos = self.camera.screen_to_world(Vec2::new(x as f32, y as f32));
+        if self.grid.reveal(pos) {
             self.loose();
         }
     }
 
     pub fn on_right_click(&mut self, x: i32, y: i32) {
-        let pos = self.screen_to_world(Vec2::new(x as f32, y as f32));
-        self.grid.flag(pos.vec2i());
+        let pos = self.camera.screen_to_world(Vec2::new(x as f32, y as f32));
+        self.grid.flag(pos);
     }
 
     fn loose(&mut self) {
@@ -128,7 +147,7 @@ impl Default for Cell {
     }
 }
 
-const CELL_SIZE: u32 = 16;
+const CELL_SIZE: i32 = 16;
 const CHUNK_SIZE: u32 = 16;
 const CHUNK_LEN: usize = (CHUNK_SIZE * CHUNK_SIZE) as usize;
 
@@ -192,13 +211,14 @@ impl Chunk {
         }
     }
 
-    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera_position: Vec2i) {
+    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera: &Camera) {
         for i in 0..self.elems.len() {
             let x = i as u32 % CHUNK_SIZE;
             let y = i as u32 / CHUNK_SIZE;
-            let p0 = Vec2::new((x * CELL_SIZE) as f32, (y * CELL_SIZE) as f32);
-            let p0 = p0 - camera_position.vec2();
-            let p1 = p0 + Vec2::new(CELL_SIZE as f32, CELL_SIZE as f32);
+            let cell_size = camera.cell_size();
+            let p0 = Vec2::new(x as f32 * cell_size, y as f32 * cell_size);
+            let p0 = p0 - camera.position.vec2();
+            let p1 = p0 + Vec2::new(cell_size, cell_size);
 
             let uv_size = texture.get_sprite_size();
             
@@ -250,9 +270,9 @@ impl Grid {
         }
     }
 
-    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera_position: Vec2i) {
+    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera: &Camera) {
         texture.bind();
-        self.chunk.draw(renderer, texture, camera_position);
+        self.chunk.draw(renderer, texture, camera);
     }
 
     fn get_cell(&self, pos: Vec2i) -> Option<&Cell> {
@@ -266,8 +286,7 @@ impl Grid {
         self.chunk.get_cell_mut((pos.x as u32, pos.y as u32))
     }
 
-    pub fn reveal(&mut self, world_pos: Vec2i) -> bool {
-        let pos = world_pos / CELL_SIZE as i32;
+    pub fn reveal(&mut self, pos: Vec2i) -> bool {
         let mut cell = self.get_cell_mut(pos).unwrap();
         cell.revealed = true;
         if let CellContents::Mine = cell.contents { return true; }
@@ -301,8 +320,8 @@ impl Grid {
         }
     }
 
-    pub fn flag(&mut self, world_pos: Vec2i) {
-        if let Some(cell) = self.get_cell_mut(world_pos) {
+    pub fn flag(&mut self, pos: Vec2i) {
+        if let Some(cell) = self.get_cell_mut(pos) {
             cell.flag = !cell.flag;
         }
     }

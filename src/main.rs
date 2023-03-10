@@ -1,7 +1,7 @@
 use sdl2::event::Event;
 
 pub mod renderer;
-use renderer::Renderer;
+use renderer::{Renderer, Texture, Filter};
 
 pub mod math;
 
@@ -36,9 +36,11 @@ fn main() {
     // Init input
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut resources = Resources::new();
+    resources.get("./res/sprites.png").as_texture().bind();
+    Texture::set_filter(Filter::Nearest);
 
     // Init game
-    let mut game_state= GameState::new();
+    let mut game_state = GameState::new();
 
     let mut previous_frame = std::time::Instant::now();
 
