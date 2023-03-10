@@ -1,5 +1,5 @@
 
-use sdl2::{event::Event, keyboard::Scancode};
+use sdl2::{event::Event, keyboard::Scancode, mouse::MouseButton};
 
 use crate::{math::*, renderer::*, input::*, sprite_sheet::SpriteSheet, resources::*};
 
@@ -13,6 +13,7 @@ pub struct GameState {
     pub delta_time: f32,
     grid: Grid,
     state: State,
+    camera_position: Vec2i,
 }
 
 const SPRITE_HIDDEN: (i32, i32) = (0, 2);
@@ -28,14 +29,17 @@ impl Default for GameState {
             delta_time : 0.0,
             grid: Grid::generate(16, 16, DENSITY),
             state: State::Playing,
+            camera_position: Vec2i::new(0, 0),
         }
     }
 }
 
 impl GameState {
     pub fn new(window_dims: (u32, u32)) -> GameState {
+        let w = window_dims.0 / 16;
+        let h = window_dims.1 / 16;
         GameState {
-            grid: Grid::generate(window_dims.0 / 16, window_dims.1 / 16, DENSITY),
+            grid: Grid::generate(w, h, DENSITY),
             ..Default::default()
         }
     }
@@ -67,19 +71,28 @@ impl GameState {
 
     }
 
-    pub fn update(&mut self, _input: &Input) {
+    pub fn update(&mut self, input: &Input) {
+        if input.mouse.is_mouse_button_pressed(MouseButton::Middle) {
+            self.camera_position += Vec2i::new(- input.rel_mouse.x(), - input.rel_mouse.y());
+        }
 
     }
 
     pub fn draw(&self, renderer: &mut Renderer, resources: &Resources) {
+        Renderer::clear(Vec4 {x: 0.0, y: 0.0, z: 0.0, w: 0.0});
         renderer.begin_2d();
         renderer.default_texture();
         
-        self.grid.draw(renderer, resources.get("./res/sprites.png").as_texture());
+        self.grid.draw(self.camera_position, renderer, resources.get("./res/sprites.png").as_texture());
+    }
+
+    pub fn screen_to_world(&self, pos: Vec2) -> Vec2 {
+        return self.camera_position.vec2() + pos;
     }
 
     pub fn on_left_click(&mut self, x: i32, y: i32) {
-        let (x,y) = self.grid.get_coords(x, y);
+        let pos = self.screen_to_world(Vec2::new(x as f32, y as f32));
+        let (x,y) = self.grid.get_coords(pos.x as i32, pos.y as i32);
         if self.grid.reveal((x, y)) {
             self.loose();
         } else {
@@ -88,7 +101,8 @@ impl GameState {
     }
 
     pub fn on_right_click(&mut self, x: i32, y: i32) {
-        let (x,y) = self.grid.get_coords(x, y);
+        let pos = self.screen_to_world(Vec2::new(x as f32, y as f32));
+        let (x,y) = self.grid.get_coords(pos.x as i32, pos.y as i32);
         self.grid.flag(x, y);
     }
 
@@ -199,12 +213,13 @@ impl Grid {
         }
     }
 
-    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture) {
+    pub fn draw(&self, camera_position: Vec2i, renderer: &mut Renderer, texture: &Texture) {
         texture.bind();
         for i in 0..self.elems.len() {
             let x = i as u32 % self.width;
             let y = i as u32 / self.width;
             let p0 = Vec2::new(self.cell_offset.x + (x * CELL_SIZE) as f32, self.cell_offset.y + (y * CELL_SIZE) as f32);
+            let p0 = p0 - camera_position.vec2();
             let p1 = p0 + Vec2::new(CELL_SIZE as f32, CELL_SIZE as f32);
 
             let uv_size = texture.get_sprite_size();

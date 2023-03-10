@@ -1,6 +1,7 @@
 pub use cgmath::{prelude::*, Basis3, Matrix4, Point3 as P3, Vector2, Vector3, Vector4};
 
 pub type Vec2 = Vector2<f32>;
+pub type Vec2i = Vector2<i32>;
 pub type Vec3 = Vector3<f32>;
 pub type Vec4 = Vector4<f32>;
 pub type Mat4 = Matrix4<f32>;
@@ -64,6 +65,16 @@ impl IntoVec3<Vec3> for Point3 {
     }
 }
 
+pub trait IntoVec2 {
+    fn vec2(self) -> Vec2;
+}
+
+impl IntoVec2 for Vec2i{
+    fn vec2(self) -> Vec2 {
+        Vec2 {x: self.x as f32, y: self.y as f32}
+    }
+}
+
 pub trait IntoPoint3<T> {
     fn point3(&self) -> T;
 }
@@ -77,3 +88,4 @@ impl IntoPoint3<Point3> for Vec3 {
         }
     }
 }
+
