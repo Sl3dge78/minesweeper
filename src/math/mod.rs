@@ -89,3 +89,12 @@ impl IntoPoint3<Point3> for Vec3 {
     }
 }
 
+pub trait IntoVec2i {
+    fn vec2i(self) -> Vec2i;
+}
+
+impl IntoVec2i for Vec2 {
+    fn vec2i(self) -> Vec2i {
+        Vec2i {x: self.x as i32, y: self.y as i32}
+    }
+}

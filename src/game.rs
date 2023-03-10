@@ -6,7 +6,6 @@ use crate::{math::*, renderer::*, input::*, sprite_sheet::SpriteSheet, resources
 enum State {
     Playing,
     Lost,
-    Won,
 }
 
 pub struct GameState {
@@ -27,7 +26,7 @@ impl Default for GameState {
     fn default() -> Self {
         GameState {
             delta_time : 0.0,
-            grid: Grid::generate(16, 16, DENSITY),
+            grid: Grid::new(),
             state: State::Playing,
             camera_position: Vec2i::new(0, 0),
         }
@@ -35,11 +34,9 @@ impl Default for GameState {
 }
 
 impl GameState {
-    pub fn new(window_dims: (u32, u32)) -> GameState {
-        let w = window_dims.0 / 16;
-        let h = window_dims.1 / 16;
+    pub fn new() -> GameState {
         GameState {
-            grid: Grid::generate(w, h, DENSITY),
+            grid: Grid::new(),
             ..Default::default()
         }
     }
@@ -59,8 +56,11 @@ impl GameState {
                 if let Some(scancode) = scancode {
                     match scancode {
                         Scancode::R => { 
-                            self.grid = Grid::generate(1280 / 16, 720 / 16, DENSITY);
+                            self.grid = Grid::new();
                             self.state = State::Playing;
+                        },
+                        Scancode::M => {
+                            self.grid.show_all_mines();
                         },
                         _ => {},
                     }   
@@ -83,7 +83,7 @@ impl GameState {
         renderer.begin_2d();
         renderer.default_texture();
         
-        self.grid.draw(self.camera_position, renderer, resources.get("./res/sprites.png").as_texture());
+        self.grid.draw(renderer, resources.get("./res/sprites.png").as_texture(), self.camera_position);
     }
 
     pub fn screen_to_world(&self, pos: Vec2) -> Vec2 {
@@ -92,29 +92,14 @@ impl GameState {
 
     pub fn on_left_click(&mut self, x: i32, y: i32) {
         let pos = self.screen_to_world(Vec2::new(x as f32, y as f32));
-        let (x,y) = self.grid.get_coords(pos.x as i32, pos.y as i32);
-        if self.grid.reveal((x, y)) {
+        if self.grid.reveal(pos.vec2i()) {
             self.loose();
-        } else {
-            self.check_win();
         }
     }
 
     pub fn on_right_click(&mut self, x: i32, y: i32) {
         let pos = self.screen_to_world(Vec2::new(x as f32, y as f32));
-        let (x,y) = self.grid.get_coords(pos.x as i32, pos.y as i32);
-        self.grid.flag(x, y);
-    }
-
-    fn check_win(&mut self) {
-        for c in &self.grid.elems {
-            match c.contents {
-                CellContents::Empty(_) => if !c.revealed { return; },
-                CellContents::Mine => {},
-            }
-        }
-        self.state = State::Won;
-        println!("You won!");
+        self.grid.flag(pos.vec2i());
     }
 
     fn loose(&mut self) {
@@ -144,30 +129,26 @@ impl Default for Cell {
 }
 
 const CELL_SIZE: u32 = 16;
+const CHUNK_SIZE: u32 = 16;
+const CHUNK_LEN: usize = (CHUNK_SIZE * CHUNK_SIZE) as usize;
 
-struct Grid {
-    elems : Vec<Cell>,
-    cell_offset: Vec2,
-    width: u32,
-    height: u32,
+struct Chunk {
+    elems : [Cell;(CHUNK_SIZE * CHUNK_SIZE) as usize],
+    position: Vec2i,
 }
 
-impl Grid {
-    pub fn generate(width: u32, height: u32, density: f32) -> Grid {
-        let mut result = Grid {
-            elems: Vec::new(),
-            cell_offset: Vector2::new(0.0, 0.0),
-            width,
-            height
+impl Chunk {
+    pub fn new(position: Vec2i, density: f32) -> Chunk {
+        let mut result = Chunk {
+            elems: [Default::default();256],
+            position,
         };
-        result.elems.resize((width * height) as usize, Default::default());
-        let nb_mines: u32 = (density * (width * height) as f32) as u32;
-
+        let nb_mines: u32 = (density * (CHUNK_LEN) as f32) as u32;
         for _ in 0..nb_mines {
             loop {
-                let x = rand::random::<u32>() % width;
-                let y = rand::random::<u32>() % height;
-                let index: usize = (x + y * width) as usize;
+                let x = rand::random::<u32>() % CHUNK_SIZE;
+                let y = rand::random::<u32>() % CHUNK_SIZE;
+                let index: usize = (x + y * CHUNK_SIZE) as usize;
                 match result.elems[index].contents {
                     CellContents::Mine => continue,
                     _ => { 
@@ -180,32 +161,22 @@ impl Grid {
         result
     }
 
-    fn get_cell(&self, pos: (u32, u32)) -> &Cell {
-        let idx = Grid::get_index(self.width, pos.0, pos.1);
-        return &self.elems[idx];
-    }
-
-    fn get_cell_mut(&mut self, pos:(u32, u32)) -> &mut Cell {
-        let idx = Grid::get_index(self.width, pos.0, pos.1);
-        return &mut self.elems[idx];
-    }
-
-    fn get_index(width: u32, x: u32, y: u32) -> usize {
-        (x + y * width) as usize
+    fn idx(x: u32, y: u32) -> usize {
+        (x + y * CHUNK_SIZE) as usize
     }
 
     fn place_mine(&mut self, x: u32, y: u32) {
-        let idx = Grid::get_index(self.width, x, y);
+        let idx = Chunk::idx(x, y);
         self.elems[idx].contents = CellContents::Mine;
         let start_x = if x == 0 { 0 } else { x - 1 };
-        let end_x = if x == self.width - 1 { self.width - 1 } else { x + 1 };
+        let end_x = if x == CHUNK_SIZE - 1 { CHUNK_SIZE - 1 } else { x + 1 };
 
         let start_y = if y == 0 { 0 } else { y - 1};
-        let end_y = if y == self.height - 1 { self.height - 1 } else { y + 1};
+        let end_y = if y == CHUNK_SIZE - 1 { CHUNK_SIZE - 1 } else { y + 1};
         for x2 in start_x..=end_x {
             for y2 in start_y..=end_y {
                 if x2 == x && y2 == y { continue; }
-                let idx = Grid::get_index(self.width, x2, y2);
+                let idx = Chunk::idx(x2, y2);
                 if let CellContents::Empty(ref mut nb) = self.elems[idx].contents {
                     *nb += 1;
                 }
@@ -213,12 +184,19 @@ impl Grid {
         }
     }
 
-    pub fn draw(&self, camera_position: Vec2i, renderer: &mut Renderer, texture: &Texture) {
-        texture.bind();
+    pub fn show_all_mines(&mut self) {
+        for mut c in &mut self.elems {
+            if let CellContents::Mine = c.contents {
+                c.revealed = true;
+            }
+        }
+    }
+
+    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera_position: Vec2i) {
         for i in 0..self.elems.len() {
-            let x = i as u32 % self.width;
-            let y = i as u32 / self.width;
-            let p0 = Vec2::new(self.cell_offset.x + (x * CELL_SIZE) as f32, self.cell_offset.y + (y * CELL_SIZE) as f32);
+            let x = i as u32 % CHUNK_SIZE;
+            let y = i as u32 / CHUNK_SIZE;
+            let p0 = Vec2::new((x * CELL_SIZE) as f32, (y * CELL_SIZE) as f32);
             let p0 = p0 - camera_position.vec2();
             let p1 = p0 + Vec2::new(CELL_SIZE as f32, CELL_SIZE as f32);
 
@@ -249,18 +227,58 @@ impl Grid {
         }
     }
 
-    pub fn get_coords(&self, x: i32, y: i32) -> (u32, u32) {
-        let x = ((x as f32 - self.cell_offset.x) / (CELL_SIZE as f32)) as u32; 
-        let y = ((y as f32 - self.cell_offset.y) / (CELL_SIZE as f32)) as u32;
-        return (x, y);
+    pub fn get_cell(&self, pos: (u32, u32)) -> Option<&Cell> {
+        if pos.0 >= CHUNK_SIZE || pos.1 >= CHUNK_SIZE {
+            return None;
+        }
+        self.elems.get(Chunk::idx(pos.0, pos.1))
     }
 
-    pub fn reveal(&mut self, pos: (u32, u32)) -> bool {
-        // The one we clicked on
-        let mut cell = self.get_cell_mut(pos);
+    pub fn get_cell_mut(&mut self, pos: (u32, u32)) -> Option<&mut Cell> {
+        self.elems.get_mut(Chunk::idx(pos.0, pos.1))
+    }
+}
+
+struct Grid {
+    chunk: Chunk
+}
+
+impl Grid {
+    pub fn new() -> Grid {
+         Grid {
+             chunk : Chunk::new(Vec2i::new(0, 0), DENSITY)
+        }
+    }
+
+    pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera_position: Vec2i) {
+        texture.bind();
+        self.chunk.draw(renderer, texture, camera_position);
+    }
+
+    fn get_cell(&self, pos: Vec2i) -> Option<&Cell> {
+        if pos.x < 0 || pos.y < 0 {
+            return None;
+        }
+        self.chunk.get_cell((pos.x as u32, pos.y as u32))
+    }
+
+    fn get_cell_mut(&mut self, pos: Vec2i) -> Option<&mut Cell> {
+        self.chunk.get_cell_mut((pos.x as u32, pos.y as u32))
+    }
+
+    pub fn reveal(&mut self, world_pos: Vec2i) -> bool {
+        let pos = world_pos / CELL_SIZE as i32;
+        let mut cell = self.get_cell_mut(pos).unwrap();
         cell.revealed = true;
         if let CellContents::Mine = cell.contents { return true; }
         if let CellContents::Empty(x) = cell.contents { if x != 0 { return false; } }
+        self.reveal_recurse(pos);
+        return false;
+    }
+
+    pub fn reveal_recurse(&mut self, pos: Vec2i) {
+        let mut cell = self.get_cell_mut(pos).unwrap();
+        cell.revealed = true;
 
         fn check_cell(cell: &Cell) -> bool {
             if cell.revealed == true { 
@@ -272,80 +290,24 @@ impl Grid {
             }
         }
 
-        if pos.0 != 0 {
-            let pos = (pos.0-1, pos.1);
-            if check_cell(self.get_cell(pos)) {
-                self.reveal(pos);
-            }
+        let adj = [Vec2i::new(-1, 0), Vec2i::new(1, 0), Vec2i::new(0, -1), Vec2i::new(0, 1)];
+        for p in adj {
+            let pos = pos + p;
+            if let Some(c) = self.get_cell(pos) {
+                if check_cell(c) {
+                    self.reveal_recurse(pos);
+                }
+            }  
         }
-        if pos.0 + 1 != self.width {
-            let pos = (pos.0+1, pos.1);
-            if check_cell(self.get_cell(pos)) {
-                self.reveal(pos);
-            }
-        }
-        if pos.1 != 0 {
-            let pos = (pos.0, pos.1-1);
-            if check_cell(self.get_cell(pos)) {
-                self.reveal(pos);
-            }
-        }
-        if pos.1 + 1 != self.height {
-            let pos = (pos.0, pos.1+1);
-            if check_cell(self.get_cell(pos)) {
-                self.reveal(pos);
-            }
-        }
-        
-        return false;
     }
 
-    pub fn flag(&mut self, x: u32, y: u32) {
-        let idx = Grid::get_index(self.width, x, y);
-        self.elems[idx].flag = !self.elems[idx].flag;
+    pub fn flag(&mut self, world_pos: Vec2i) {
+        if let Some(cell) = self.get_cell_mut(world_pos) {
+            cell.flag = !cell.flag;
+        }
     }
 
     pub fn show_all_mines(&mut self) {
-        for mut c in &mut self.elems {
-            if let CellContents::Mine = c.contents {
-                c.revealed = true;
-            }
-        }
+        self.chunk.show_all_mines();
     }
-
-/*
-
-        for (x, y) in Grid::iter_neighbors(self.size, x, y) {
-            let id = Grid::get_index(self.size, x, y);
-            if let CellContents::Empty(nb) = self.elems[id].contents {
-                 if nb != 0 { continue; }
-            } else {
-                continue; 
-            }
-            self.reveal(x,y);
-        }
-    pub fn iter_neighbors(size: u32, x: u32, y: u32) -> Vec<(u32, u32)> {
-        let a = if x == 0 {
-            None
-        } else {
-            Some((x-1, y))
-        };
-        let b = if y == 0 {
-            None
-        } else {
-            Some((x, y-1))
-        };
-        let c = if x + 1 == size {
-            None
-        } else {
-            Some((x+1, y))
-        };
-        let d = if y + y == size {
-            None
-        } else {
-            Some((x, y+1))
-        };
-        a.into_iter().chain(b).chain(c).chain(d)
-    }
-    */
 }

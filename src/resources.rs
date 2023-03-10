@@ -6,15 +6,13 @@ use crate::renderer::Texture;
 
 pub enum ResourceKind {
     Texture(Texture),
-    Audio,
 }
 
 impl ResourceKind {
     pub fn as_texture(&self) -> &Texture {
-        if let ResourceKind::Texture(t) = self {
-            t
-        } else {
-            panic!()
+        match self {
+            ResourceKind::Texture(t) => t,
+            _ => panic!(),
         }
     }
 }
@@ -100,4 +98,3 @@ pub trait ResourceLoader {
     fn load_resource(path: &str) -> Option<ResourceKind>;
 }
 
-type Loader = fn(&str) -> ResourceKind;

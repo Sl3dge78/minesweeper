@@ -38,7 +38,7 @@ fn main() {
     let mut resources = Resources::new();
 
     // Init game
-    let mut game_state= GameState::new((1280, 720));
+    let mut game_state= GameState::new();
 
     let mut previous_frame = std::time::Instant::now();
 
@@ -63,3 +63,4 @@ fn main() {
         renderer.swap(&window);
     }
 }
+

@@ -54,7 +54,6 @@ impl Texture {
         //     gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, info.width as i32, info.height as i32, 0, format, gl::UNSIGNED_BYTE, buf.as_ptr() as *const GLvoid);
         // }
         Texture::set_filter(Filter::Linear);
-        println!("w: {}, h:{}", info.width, info.height);
         tex.width = info.width;
         tex.height = info.height;
         Some(tex)
