@@ -96,6 +96,7 @@ impl GameState {
     pub fn update(&mut self, input: &Input) {
         if input.mouse.is_mouse_button_pressed(MouseButton::Middle) {
             self.camera.position += Vec2i::new(- input.rel_mouse.x(), - input.rel_mouse.y());
+            self.grid.update_chunks(&self.camera);
         }
 
     }
@@ -162,13 +163,14 @@ impl Chunk {
             elems: [Default::default();256],
             position,
         };
+        println!("Generating chunk {:?}", position);
         let nb_mines: u32 = (density * (CHUNK_LEN) as f32) as u32;
         for _ in 0..nb_mines {
             loop {
-                let x = rand::random::<u32>() % CHUNK_SIZE;
-                let y = rand::random::<u32>() % CHUNK_SIZE;
-                let index: usize = (x + y * CHUNK_SIZE) as usize;
-                match result.elems[index].contents {
+                let x = rand::random::<u32>() % CHUNK_SIZE as u32;
+                let y = rand::random::<u32>() % CHUNK_SIZE as u32;
+                let idx= Chunk::idx(x, y);
+                match result.elems[idx].contents {
                     CellContents::Mine => continue,
                     _ => { 
                         result.place_mine(x, y);
@@ -212,12 +214,13 @@ impl Chunk {
     }
 
     pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera: &Camera) {
+        let cell_size = camera.cell_size();
+        let origin = self.position.vec2() * CHUNK_SIZE as f32 * cell_size;
+        let origin = origin - camera.position.vec2();
         for i in 0..self.elems.len() {
             let x = i as u32 % CHUNK_SIZE;
             let y = i as u32 / CHUNK_SIZE;
-            let cell_size = camera.cell_size();
-            let p0 = Vec2::new(x as f32 * cell_size, y as f32 * cell_size);
-            let p0 = p0 - camera.position.vec2();
+            let p0 = Vec2::new(x as f32 * cell_size, y as f32 * cell_size) + origin;
             let p1 = p0 + Vec2::new(cell_size, cell_size);
 
             let uv_size = texture.get_sprite_size();
@@ -260,30 +263,76 @@ impl Chunk {
 }
 
 struct Grid {
-    chunk: Chunk
+    chunks: Vec<Chunk>
 }
 
 impl Grid {
     pub fn new() -> Grid {
          Grid {
-             chunk : Chunk::new(Vec2i::new(0, 0), DENSITY)
+             chunks: Vec::new()
         }
+    }
+
+    pub fn update_chunks(&mut self, camera: &Camera) {
+        // Calculate the cameras extent in chunks. 
+        // We approximate with the following values for the default zoom level:
+        const NB_CHUNKS_HEIGHT : f32 = 4.0;
+        const NB_CHUNKS_WIDTH : f32 = 5.0;
+
+        let nb_h = NB_CHUNKS_HEIGHT * camera.cell_size() / CELL_SIZE as f32;
+        let nb_w = NB_CHUNKS_WIDTH  * camera.cell_size() / CELL_SIZE as f32;
+        let min_extent = camera.position / (camera.cell_size() as i32 * CHUNK_SIZE as i32);
+        let max_extent = min_extent + Vec2i::new(nb_h.round() as i32, nb_w.round() as i32);
+        self.chunks.retain(|x| x.position.x >= min_extent.x && x.position.x <= max_extent.x && x.position.y >= min_extent.y && x.position.y <= max_extent.y);
+        for x in min_extent.x..=max_extent.x {
+            for y in min_extent.y..=max_extent.y {
+                let pos = Vec2i::new(x, y);
+                if let Some(_) = self.find_chunk(pos) {
+                    continue;
+                }
+                self.chunks.push(Chunk::new(pos, DENSITY));
+            }
+        }
+
     }
 
     pub fn draw(&self, renderer: &mut Renderer, texture: &Texture, camera: &Camera) {
         texture.bind();
-        self.chunk.draw(renderer, texture, camera);
+        for c in &self.chunks {
+            c.draw(renderer, texture, camera);
+        }
+    }
+
+    fn find_chunk(&self, chunk_coord: Vec2i) -> Option<&Chunk> {
+        for c in &self.chunks {
+            if c.position == chunk_coord {
+                return Some(c);
+            }
+        }
+        None
+    }
+
+    fn find_chunk_mut(&mut self, chunk_coord: Vec2i) -> Option<&mut Chunk> {
+        for c in &mut self.chunks {
+            if c.position == chunk_coord {
+                return Some(c);
+            }
+        }
+        None
     }
 
     fn get_cell(&self, pos: Vec2i) -> Option<&Cell> {
-        if pos.x < 0 || pos.y < 0 {
-            return None;
-        }
-        self.chunk.get_cell((pos.x as u32, pos.y as u32))
+        let chunk = self.find_chunk(pos / CHUNK_SIZE as i32)?;
+        let x = pos.x - chunk.position.x * CHUNK_SIZE as i32;
+        let y = pos.y - chunk.position.y * CHUNK_SIZE as i32;
+        chunk.get_cell((x as u32, y as u32))
     }
 
     fn get_cell_mut(&mut self, pos: Vec2i) -> Option<&mut Cell> {
-        self.chunk.get_cell_mut((pos.x as u32, pos.y as u32))
+        let chunk = self.find_chunk_mut(pos / CHUNK_SIZE as i32)?;
+        let x = pos.x - chunk.position.x * CHUNK_SIZE as i32;
+        let y = pos.y - chunk.position.y * CHUNK_SIZE as i32;
+        chunk.get_cell_mut((x as u32, y as u32))
     }
 
     pub fn reveal(&mut self, pos: Vec2i) -> bool {
@@ -327,6 +376,8 @@ impl Grid {
     }
 
     pub fn show_all_mines(&mut self) {
-        self.chunk.show_all_mines();
+        for c in &mut self.chunks {
+            c.show_all_mines();
+        }
     }
 }
