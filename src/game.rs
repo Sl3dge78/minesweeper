@@ -282,7 +282,9 @@ impl Grid {
         let nb_h = NB_CHUNKS_HEIGHT * camera.cell_size() / CELL_SIZE as f32;
         let nb_w = NB_CHUNKS_WIDTH  * camera.cell_size() / CELL_SIZE as f32;
         let min_extent = camera.position / (camera.cell_size() as i32 * CHUNK_SIZE as i32);
-        let max_extent = min_extent + Vec2i::new(nb_h.round() as i32, nb_w.round() as i32);
+        let min_extent = min_extent - Vec2i::new(1, 1);
+        let max_extent = min_extent + Vec2i::new(nb_h.ceil() as i32, nb_w.ceil() as i32);
+        let max_extent = max_extent + Vec2i::new(2, 0);
         self.chunks.retain(|x| x.position.x >= min_extent.x && x.position.x <= max_extent.x && x.position.y >= min_extent.y && x.position.y <= max_extent.y);
         for x in min_extent.x..=max_extent.x {
             for y in min_extent.y..=max_extent.y {
@@ -340,11 +342,14 @@ impl Grid {
         cell.revealed = true;
         if let CellContents::Mine = cell.contents { return true; }
         if let CellContents::Empty(x) = cell.contents { if x != 0 { return false; } }
-        self.reveal_recurse(pos);
+        self.reveal_recurse(pos, 0);
         return false;
     }
 
-    pub fn reveal_recurse(&mut self, pos: Vec2i) {
+    pub fn reveal_recurse(&mut self, pos: Vec2i, depth: u32) {
+        if depth >= 8 {
+            return;
+        }
         let mut cell = self.get_cell_mut(pos).unwrap();
         cell.revealed = true;
 
@@ -363,7 +368,7 @@ impl Grid {
             let pos = pos + p;
             if let Some(c) = self.get_cell(pos) {
                 if check_cell(c) {
-                    self.reveal_recurse(pos);
+                    self.reveal_recurse(pos, depth + 1);
                 }
             }  
         }
